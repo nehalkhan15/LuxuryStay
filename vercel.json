@@ -1,9 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run build",
-  "functions": {
-    "api/index.js": {
-      "runtime": "nodejs@24.x"
-    }
-  }
+  "buildCommand": "npm run build"
 }
