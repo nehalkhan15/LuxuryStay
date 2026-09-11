@@ -19,7 +19,6 @@ app.use(express.json());
 // ============================================================================
 // DATABASE CONNECTION
 // MongoDB Atlas is the persistent source of truth.
-// The server connects to MongoDB before opening port 5000.
 // ============================================================================
 
 async function connectDB() {
@@ -31,52 +30,38 @@ async function connectDB() {
     );
   }
 
+  // If already connected, don't create another connection.
+  if (mongoose.connection.readyState === 1) {
+    return true;
+  }
+
   console.log('Connecting to MongoDB Atlas/persistent MongoDB...');
 
   try {
     await mongoose.connect(mongoUri, {
-      // Prevent the application from hanging for a very long time
+      // MongoDB server selection timeout
       serverSelectionTimeoutMS: 15000,
 
-      // DNS/socket connection timeout
+      // Initial connection timeout
       connectTimeoutMS: 15000,
 
-      // Keep connections alive
+      // Socket inactivity timeout
       socketTimeoutMS: 45000,
 
-      // Recommended for modern MongoDB drivers
-      family: 4
+      // Force IPv4 to avoid IPv6 networking problems
+      family: 4,
+
+      // Keep connections reusable between Vercel invocations
+      maxPoolSize: 10,
+      minPoolSize: 0,
+
+      // Don't buffer database operations while disconnected
+      bufferCommands: false
     });
 
     console.log(
       'MongoDB connected successfully as persistent source of truth.'
     );
-
-    // ------------------------------------------------------------------------
-    // AUTO-SEED EMPTY DATABASE
-    // ------------------------------------------------------------------------
-
-    const User = require('./models/User');
-    const userCount = await User.countDocuments();
-
-    if (userCount === 0) {
-      console.log(
-        'Database is empty. Initializing the luxury hotel demo dataset...'
-      );
-
-      const seedData = require('./seed');
-
-      // seed.js reuses the already established Mongoose connection.
-      await seedData();
-
-      console.log('Initial database seed completed successfully.');
-    } else {
-      console.log(
-        `Existing MongoDB database detected (${userCount} user record(s)).`
-      );
-
-      console.log('Existing operational data will be preserved.');
-    }
 
     return true;
   } catch (error) {
@@ -85,8 +70,10 @@ async function connectDB() {
     console.error('MONGODB CONNECTION FAILED');
     console.error('==============================================');
     console.error('Error:', error.message);
+    console.error('Name:', error.name);
+    console.error('Code:', error.code);
+    console.error('ReadyState:', mongoose.connection.readyState);
 
-    // Specific DNS/SRV error
     if (
       error.message.includes('queryTxt') ||
       error.message.includes('ETIMEOUT') ||
@@ -101,10 +88,6 @@ async function connectDB() {
       console.error('3. Incorrect MongoDB Atlas connection string');
       console.error('4. MongoDB Atlas cluster/network issue');
       console.error('');
-      console.error('Try using Google DNS:');
-      console.error('Preferred DNS: 8.8.8.8');
-      console.error('Alternate DNS: 8.8.4.4');
-      console.error('');
     }
 
     throw error;
@@ -116,10 +99,13 @@ async function connectDB() {
 // ============================================================================
 
 app.use('/api', (req, res, next) => {
+  // Health endpoint handles its own database check.
   if (req.path === '/health') {
     return next();
   }
 
+  // api/index.js should already have established the connection.
+  // This is only a final safety check.
   if (mongoose.connection.readyState !== 1) {
     return res.status(503).json({
       message:
@@ -171,6 +157,7 @@ app.use('/api/tasks', require('./routes/tasks'));
 // ============================================================================
 // HEALTH CHECK
 // ============================================================================
+
 app.get('/api/health', async (req, res) => {
   try {
     if (mongoose.connection.readyState !== 1) {
@@ -231,8 +218,7 @@ app.get('*', (req, res) => {
 });
 
 // ============================================================================
-// START SERVER
-// MongoDB MUST connect successfully before port 5000 opens.
+// LOCAL SERVER STARTUP
 // ============================================================================
 
 async function startServer() {
@@ -280,19 +266,11 @@ async function startServer() {
     }
   }
 
-  // --------------------------------------------------------------------------
-  // All attempts failed
-  // --------------------------------------------------------------------------
-
   console.error('');
   console.error('==============================================');
   console.error('CRITICAL: Failed to start LuxuryStay HMS.');
-  console.error('MongoDB connection/initialization failed.');
+  console.error('MongoDB connection failed.');
   console.error('==============================================');
-  console.error('');
-  console.error(
-    'The server was NOT started because persistent MongoDB is required.'
-  );
   console.error('');
 
   try {

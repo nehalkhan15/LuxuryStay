@@ -5,32 +5,41 @@ const { connectDB } = require('../server/server');
 let dbPromise = null;
 
 async function ensureDatabase() {
-  // Already connected
+  // MongoDB is already connected on this Vercel instance.
   if (mongoose.connection.readyState === 1) {
     return;
   }
 
-  // If a connection attempt is already running, wait for it.
-  if (mongoose.connection.readyState === 2 && dbPromise) {
-    await dbPromise;
-    return;
+  // A connection attempt is already in progress.
+  // Wait for that same attempt instead of starting another one.
+  if (dbPromise) {
+    try {
+      await dbPromise;
+
+      if (mongoose.connection.readyState === 1) {
+        return;
+      }
+    } catch (error) {
+      dbPromise = null;
+      throw error;
+    }
+
+    dbPromise = null;
   }
 
-  // Start a new connection attempt.
-  if (!dbPromise) {
-    dbPromise = connectDB()
-      .then(() => {
-        if (mongoose.connection.readyState !== 1) {
-          throw new Error('MongoDB connection was not established.');
-        }
+  // Start one connection attempt.
+  dbPromise = connectDB()
+    .then(() => {
+      if (mongoose.connection.readyState !== 1) {
+        throw new Error('MongoDB connection was not established.');
+      }
 
-        return true;
-      })
-      .catch((error) => {
-        dbPromise = null;
-        throw error;
-      });
-  }
+      return true;
+    })
+    .catch((error) => {
+      dbPromise = null;
+      throw error;
+    });
 
   await dbPromise;
 }
