@@ -171,17 +171,39 @@ app.use('/api/tasks', require('./routes/tasks'));
 // ============================================================================
 // HEALTH CHECK
 // ============================================================================
+app.get('/api/health', async (req, res) => {
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        status: 'ERROR',
+        system: 'LuxuryStay HMS Backend',
+        database: 'disconnected',
+        readyState: mongoose.connection.readyState,
+        message: 'MongoDB is not connected'
+      });
+    }
 
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'OK',
-    system: 'LuxuryStay HMS Backend',
-    database:
-      mongoose.connection.readyState === 1
-        ? 'connected'
-        : 'disconnected',
-    timestamp: new Date()
-  });
+    // Actually verify MongoDB responds.
+    await mongoose.connection.db.admin().ping();
+
+    return res.status(200).json({
+      status: 'OK',
+      system: 'LuxuryStay HMS Backend',
+      database: 'connected',
+      readyState: mongoose.connection.readyState,
+      timestamp: new Date()
+    });
+  } catch (error) {
+    console.error('Health check MongoDB error:', error);
+
+    return res.status(503).json({
+      status: 'ERROR',
+      system: 'LuxuryStay HMS Backend',
+      database: 'error',
+      readyState: mongoose.connection.readyState,
+      message: error.message
+    });
+  }
 });
 
 // ============================================================================
